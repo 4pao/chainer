@@ -215,6 +215,9 @@ class FunctionNode(object):
         for hook in hooks:
             hook.forward_preprocess(self, in_data)
 
+        if chainer.mkld.available:
+            self.fanout = chainer.mkld.fanout.FanoutRecorder.new(self)
+
         # Forward propagation
         with cuda.get_device_from_array(*in_data):
             self._input_indexes_to_retain = None
@@ -237,6 +240,9 @@ class FunctionNode(object):
         ret = tuple([variable.Variable(y, requires_grad=requires_grad)
                      for y in outputs])
 
+        # Topological ordering
+        self.rank = max([x.rank for x in input_vars]) if input_vars else 0
+
         if configuration.config.enable_backprop:
             # Topological ordering
             self.rank = max([x.rank for x in input_vars]) if input_vars else 0
@@ -257,6 +263,9 @@ class FunctionNode(object):
                     ret[index].retain_data()
                     retained_data.append(outputs[index])
                 self._retained_output_data = tuple(retained_data)
+        else:
+            for i, y in enumerate(ret):
+                y.rank = self.rank + 1;
 
         return ret
 
@@ -495,10 +504,27 @@ class FunctionNode(object):
                 'number of gradients returned by %s (%s) is incorrect.'
                 % (self._impl_name, self.label))
 
-        return tuple([gx if g_input is None else
-                      g_input if gx is None else
-                      gx + g_input
-                      for gx, g_input in six.moves.zip(gxs, grad_inputs)])
+        gxs_ret = ()
+        for i, (gx, g_input) in enumerate(six.moves.zip(gxs, grad_inputs)):
+            if g_input is None:
+                gxs_ret += (gx,)
+            elif gx is None:
+                gxs_ret += (g_input,)
+            else:
+                j = target_input_indexes[i]
+                if self.inputs[j].creator is None:
+                    gxs_ret += (gx + g_input),
+                elif isinstance(g_input, tuple):
+                    gxs_ret += ((gx,) + g_input),
+                else:
+                    gxs_ret += ((gx,) + (g_input,)),
+
+        return gxs_ret
+
+        # return tuple([gx if g_input is None else
+        #               g_input if gx is None else
+        #               gx + g_input
+        #               for gx, g_input in six.moves.zip(gxs, grad_inputs)])
 
     def get_retained_inputs(self):
         """Returns a tuple of retained input variables.

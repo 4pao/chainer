@@ -278,6 +278,10 @@ class Function(object):
         return self.node.rank
 
     @property
+    def fanout(self):
+        return self.node.fanout
+
+    @property
     def stack(self):
         return self.node.stack
 

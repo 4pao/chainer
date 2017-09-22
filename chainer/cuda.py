@@ -31,7 +31,6 @@ import six
 
 import chainer
 
-
 available = False
 cudnn_enabled = False
 
@@ -315,6 +314,8 @@ def to_cpu(array, stream=None):
             return array.get(stream)
     elif isinstance(array, numpy.ndarray):
         return array
+    elif isinstance(array, chainer.mkld.mdarray):
+        return numpy.array(array)
     else:
         raise TypeError(
             'The array sent to cpu must be numpy.ndarray or cupy.ndarray.'
@@ -490,3 +491,23 @@ def set_max_workspace_size(size):
     """
     global _max_workspace_size
     _max_workspace_size = size
+
+
+def iscompatible(obj, class_or_tuple):
+    """ Check if datatypes are compatible
+
+    'mkld.mdarray' is compatible with 'numpy.ndarray'.
+
+    And can be used interchangable in MKL-DNN context
+
+    """
+    if isinstance(obj, class_or_tuple):
+        return True
+
+    if (isinstance(obj, chainer.mkld.mdarray) or
+        isinstance(obj, numpy.ndarray)) and \
+       (issubclass(class_or_tuple, chainer.mkld.mdarray) or
+            class_or_tuple is numpy.ndarray):
+        return True
+
+    return False
